@@ -86,4 +86,11 @@ RSpec.configure do |config|
   # as the one that triggered the failure.
   Kernel.srand config.seed
 =end
+  def create_hand(unformatted_cards)
+    result = Hand.new
+    unformatted_cards.each_slice(2) do |value, suit|
+      result.cards << Card.new(value, suit)
+    end
+    result
+  end
 end
