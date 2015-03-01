@@ -69,67 +69,65 @@ class Hand
       name: "Royal Flush",
       rank: 1,
       match: Proc.new do |cards|
-        cards.group_by { |card| card.suit }.length == 1 && cards.all? { |card| card.value > 9 }
+        royal = cards.all? { |card| card.value > 9 }
+        flush(cards) && royal
       end,
-      tiebreaker: Proc.new { |cards, other_cards| :tie }
+      tiebreaker: 0
     },
 
     {
-      name: "Straight Flush", rank: 2,
+      name: "Straight Flush",
+      rank: 2,
       match: Proc.new do |cards|
-        cards.group_by { |card| card.suit }.length == 1 && cards.sort[4].value - cards.sort[0].value == 4
+        flush(cards) && straight(cards)
       end,
       tiebreaker: Proc.new do |cards, other_cards|
+        my_high_card = cards.sort[3].value == 5 ? 
+        unless cards.sort[3].value == 5 or
         cards.sort[4] <=> other_cards.sort[4]
       end
     },
 
     {
-      name: "Four of a Kind", rank: 3,
+      name: "Four of a Kind",
+      rank: 3,
       match: Proc.new do |cards|
-        cards.group_by { |card| card.value }.values.any? { |group| group.length == 4 }
+        group_of?(4, cards)
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        my_max = cards.group_by { |card| card.value }.max_by { |card_value, card_group| card_group.length }[0]
-        other_max = other_cards.group_by { |card| card.value }.max_by { |card_value, card_group| card_group.length }[0]
-        my_max <=> other_max
+        tb_big_group(cards, other_cards)
       end
       },
 
     {
       name: "Full House", rank: 4,
       match: Proc.new do |cards|
-        grouped_cards = cards.group_by { |card| card.value }.values
-        grouped_cards.any? { |group| group.length == 3 } && grouped_cards.any? { |group| group.length == 2 }
+        group_of?(3, cards) && group_of?(2, cards)
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        my_max = cards.group_by { |card| card.value }.max_by { |card_value, card_group| card_group.length }[0]
-        other_max = other_cards.group_by { |card| card.value }.max_by { |card_value, card_group| card_group.length }[0]
-        my_max <=> other_max
+        tb_big_group(cards, other_cards)
       end
     },
 
     {
       name: "Flush", rank: 5,
       match: Proc.new do |cards|
-        grouped_cards = cards.group_by { |card| card.suit }.length == 1
+        flush(cards)
       end,
       tiebreaker: Proc.new do |cards, other_cards|
         my_cards = cards.sort.reverse
         his_cards = other_cards.sort.reverse
-
-        cards.length.times do |i|
-          return 1 if my_cards[i] > his_cards[i]
-          return -1 if my_cards[i] < his_cards[i]
-        end
-        0
+        tb_card_lists(my_cards, his_cards)
       end
     },
 
     {
       name: "Straight", rank: 6,
       match: Proc.new do |cards|
-        cards.sort[4].value - cards.sort[0].value == 4 && cards.group_by { |card| card.value }.length == 5
+
+        length_of_straight = cards.sort[4].value - cards.sort[0].value == 4
+        no_duplicates = cards.group_by { |card| card.value }.length == 5
+        straight(cards) && no_duplicates
       end,
       tiebreaker: Proc.new do |cards, other_cards|
         cards.sort[0] <=> other_cards.sort[0]
@@ -139,12 +137,10 @@ class Hand
     {
       name: "Three of a Kind", rank: 7,
       match: Proc.new do |cards|
-        cards.group_by { |card| card.value }.values.any? { |group| group.length == 3 }
+        group_of?(3, cards)
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        my_max = cards.group_by { |card| card.value }.max_by { |card_value, card_group| card_group.length }[0]
-        other_max = other_cards.group_by { |card| card.value }.max_by { |card_value, card_group| card_group.length }[0]
-        my_max <=> other_max
+        tb_big_group(cards, other_cards)
       end
     },
 
@@ -154,13 +150,11 @@ class Hand
         cards.group_by { |card| card.value }.length == 3
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        my_pair_values = cards.group_by { |card| card.value }.reject { |card_value, card_group| card_group.length == 1}.keys.sort.reverse
-        his_pair_values = other_cards.group_by { |card| card.value }.reject { |card_value, card_group| card_group.length == 1}.keys.sort.reverse
-        my_pair_values.each_index do |i|
-          return -1 if my_pair_values[i] < his_pair_values[i]
-          return 1 if  my_pair_values[i] > his_pair_values[i]
-        end
-        (cards.map { |card| card.value } - my_pair_values)[0] <=> (other_cards.map { |card| card.value } - his_pair_values)[0]
+        my_pair_values = pairs(cards)
+        his_pair_values = pairs(other_cards)
+        my_single_card = (cards.map { |card| card.value } - my_pair_values)
+        his_single_card = (other_cards.map { |card| card.value } - his_pair_values)
+        tb_card_lists(my_pair_values + my_single_card, his_pair_values + his_single_card)
       end
     },
 
@@ -170,17 +164,21 @@ class Hand
         cards.group_by { |card| card.value }.length == 4
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        my_pair = cards.group_by { |card| card.value }.reject { |card_value, card_group| card_group.length == 1}.keys[0]
-        his_pair = other_cards.group_by { |card| card.value }.reject { |card_value, card_group| card_group.length == 1}.keys[0]
-        return 1 if my_pair > his_pair
-        return -1 if his_pair > my_pair
-        my_remaining_cards = (cards.map { |card| card.value } - [my_pair]).sort.reverse
-        his_remaining_cards = (other_cards.map { |card| card.value } - [his_pair]).sort.reverse
-        my_remaining_cards.each_index do |i|
-          return -1 if my_remaining_cards[i] < his_remaining_cards[i]
-          return 1 if my_remaining_cards[i] > his_remaining_cards[i]
-        end
-        0
+        my_pair = pairs(cards)
+        his_pair = pairs(other_cards)
+        my_remaining_cards = (cards.map { |card| card.value } - my_pair).sort.reverse
+        his_remaining_cards = (other_cards.map { |card| card.value } - his_pair).sort.reverse
+        tb_card_lists(my_pair + my_remaining_cards, his_pair + his_remaining_cards)
+      end
+    },
+
+    {
+      name: "High Card", rank: 10,
+      match: true,
+      tiebreaker: Proc.new do |cards, other_cards|
+        my_cards = cards.map { |card| card.value }.sort.reverse
+        his_cards = cards.map { |card| card.value }.sort.reverse
+        tb_card_lists(my_cards, his_cards)
       end
     }
   ]
@@ -229,6 +227,44 @@ class Hand
       display_hand += card.to_s + ' '
     end
     display_hand.strip
+  end
+
+  def self.pairs(cards)
+    by_value = cards.group_by { |card| card.value }
+    by_value.reject { |c, card_group| card_group.length == 1}.keys.sort.reverse
+  end
+
+  def self.tb_big_group(cards, other_cards)
+    my_max = cards.group_by { |card| card.value }.max_by { |c, card_group| card_group.length }[0]
+    other_max = other_cards.group_by { |card| card.value }.max_by { |c, card_group| card_group.length }[0]
+    my_max <=> other_max
+  end
+
+  def self.tb_card_lists(cards, other_cards)
+    cards.length.times do |i|
+      return 1 if cards[i] > other_cards[i]
+      return -1 if cards[i] < other_cards[i]
+    end
+    0
+  end
+
+  def self.flush(cards)
+    cards.group_by { |card| card.suit }.length == 1
+  end
+
+  def self.group_of?(num, cards)
+    cards.group_by { |card| card.value }.values.any? { |group| group.length == num }
+  end
+
+  def self.straight(cards)
+    check_cards = cards.map { |card| value }.sort
+    high_ace_straight = check_cards[4] - check_cards[0] == 4
+    if check_cards[4] == 14
+      check_cards.pop
+      check_cards.unshift(1)
+      low_ace_straight = check_cards[4] - check_cards[0] == 4
+    end
+    high_ace_straight || low_ace_straight
   end
 end
 
@@ -358,13 +394,13 @@ class Game
   end
 
   def get_bets
-    current_bet, last_raising = -1, 0
+    current_bet, last_raising = 10, 0
     i = 0
     loop do
       i += 1
       currently_betting = @players[i % @players.length]
-      next if currently_betting.folded?
       break if currently_betting == last_raising
+      next if currently_betting.folded?
       puts "It's #{currently_betting.name}'s turn."
       puts currently_betting.display_hand
       bet = currently_betting.get_action([0, current_bet].max)
@@ -383,6 +419,9 @@ class Game
   end
 
   def print_winners(winners)
+    if @players.all? { |player| player.folded? }
+      puts "You all folded? I'll take the pot!"
+    end
     winning_hand = winners[0].hand.hand_name
     if winners.length == 1
       puts "#{winners[0].name} is the winner with a #{winning_hand}!!"
@@ -416,6 +455,14 @@ class Game
 end
 
 
+
+if __FILE__ == $PROGRAM_NAME
+  joshua = Player.new("Joshua", 800)
+  bob = Player.new("Bob", 500)
+  judy = Player.new("Judy", 1000)
+  g = Game.new([joshua, bob, judy])
+  g.play
+end
 
 
 
