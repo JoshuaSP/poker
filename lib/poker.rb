@@ -1,4 +1,5 @@
 require 'colorize'
+require 'byebug'
 
 Card = Struct.new(:value, :suit) do
 
@@ -60,7 +61,6 @@ class Deck
   end
 end
 
-##  TO DO:  FIX ALL THE RETURNS IN TIEBREAKERS
 
 
 class Hand
@@ -72,7 +72,7 @@ class Hand
         royal = cards.all? { |card| card.value > 9 }
         flush(cards) && royal
       end,
-      tiebreaker: 0
+      tiebreaker: Proc.new { |v| 0 }
     },
 
     {
@@ -82,9 +82,7 @@ class Hand
         flush(cards) && straight(cards)
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        my_high_card = cards.sort[3].value == 5 ? 
-        unless cards.sort[3].value == 5 or
-        cards.sort[4] <=> other_cards.sort[4]
+        tb_straights(cards, other_cards)
       end
     },
 
@@ -124,13 +122,11 @@ class Hand
     {
       name: "Straight", rank: 6,
       match: Proc.new do |cards|
-
-        length_of_straight = cards.sort[4].value - cards.sort[0].value == 4
         no_duplicates = cards.group_by { |card| card.value }.length == 5
         straight(cards) && no_duplicates
       end,
       tiebreaker: Proc.new do |cards, other_cards|
-        cards.sort[0] <=> other_cards.sort[0]
+        tb_straights(cards, other_cards)
       end
     },
 
@@ -174,10 +170,10 @@ class Hand
 
     {
       name: "High Card", rank: 10,
-      match: true,
+      match: Proc.new { |v| true },
       tiebreaker: Proc.new do |cards, other_cards|
         my_cards = cards.map { |card| card.value }.sort.reverse
-        his_cards = cards.map { |card| card.value }.sort.reverse
+        his_cards = other_cards.map { |card| card.value }.sort.reverse
         tb_card_lists(my_cards, his_cards)
       end
     }
@@ -248,6 +244,12 @@ class Hand
     0
   end
 
+  def self.tb_straights(cards, other_cards)
+    my_high_card = cards.sort[3].value == 5 ? 5 : cards.sort[4].value
+    his_high_card = cards.sort[3].value == 5 ? 5 : cards.sort[4].value
+    my_high_card <=> his_high_card
+  end
+
   def self.flush(cards)
     cards.group_by { |card| card.suit }.length == 1
   end
@@ -257,13 +259,9 @@ class Hand
   end
 
   def self.straight(cards)
-    check_cards = cards.map { |card| value }.sort
+    check_cards = cards.map { |card| card.value }.sort
     high_ace_straight = check_cards[4] - check_cards[0] == 4
-    if check_cards[4] == 14
-      check_cards.pop
-      check_cards.unshift(1)
-      low_ace_straight = check_cards[4] - check_cards[0] == 4
-    end
+    low_ace_straight = check_cards[3] == 5 && check_cards[4] = 14
     high_ace_straight || low_ace_straight
   end
 end
@@ -335,7 +333,7 @@ class Player
       else
         raise "unrecognized input"
       end
-    rescue => e
+    rescue RuntimeError => e
       puts e.message
       retry
     end
@@ -357,9 +355,9 @@ class Game
   def play_round
     start_round
     deal_hands
-    get_bets
+    return if everyone_folds(get_bets)
     discards
-    get_bets
+    return if everyone_folds(get_bets)
     winners = determine_winner
     print_winners(winners)
     settle_pot(winners)
@@ -370,6 +368,16 @@ class Game
       winner.change_purse(pot / winners.length)
     end
     pot = 0
+  end
+
+  def everyone_folds(winner)
+    if winner
+      puts "Everyone folded - #{winner.name} wins!!"
+      winner.change_purse (@pot)
+      @pot = 0
+      return true
+    end
+    false
   end
 
   def play
@@ -394,13 +402,18 @@ class Game
   end
 
   def get_bets
-    current_bet, last_raising = 10, 0
+    current_bet, last_raising = 10, @players[1]
     i = 0
+    first_round = true
     loop do
       i += 1
       currently_betting = @players[i % @players.length]
-      break if currently_betting == last_raising
+      break if currently_betting == last_raising && !first_round
+      first_round = false
       next if currently_betting.folded?
+      if @players.count { |player| !player.folded? } == 1
+        return currently_betting
+      end
       puts "It's #{currently_betting.name}'s turn."
       puts currently_betting.display_hand
       bet = currently_betting.get_action([0, current_bet].max)
@@ -408,7 +421,9 @@ class Game
       last_raising = currently_betting if bet > current_bet
       current_bet = bet if bet != 0
     end
+    return nil
   end
+
 
   def discards
     @players.reject { |player| player.folded? }.each do |player|
@@ -419,9 +434,6 @@ class Game
   end
 
   def print_winners(winners)
-    if @players.all? { |player| player.folded? }
-      puts "You all folded? I'll take the pot!"
-    end
     winning_hand = winners[0].hand.hand_name
     if winners.length == 1
       puts "#{winners[0].name} is the winner with a #{winning_hand}!!"
@@ -437,6 +449,7 @@ class Game
       compare = tied.pop
       case winners[0].tie_break(compare)
       when 1
+        next
       when 0
         winners << compare
       when -1
@@ -470,16 +483,17 @@ end
 
 
 
-
-def to_sentence
-  case length
-    when 0
-      ""
-    when 1
-      self[0].to_s
-    when 2
-      "#{self[0]} and #{self[1]}"
-    else
-      "#{self[0...-1].join(',')} and #{self[-1]}"
+class Array
+  def to_sentence
+    case length
+      when 0
+        ""
+      when 1
+        self[0].to_s
+      when 2
+        "#{self[0]} and #{self[1]}"
+      else
+        "#{self[0...-1].join(',')} and #{self[-1]}"
+    end
   end
 end

@@ -71,6 +71,18 @@ RSpec.describe Hand do
     h.cards = [card1, card2]
     h
   end
+  let(:royal_flush) { [14, :hearts, 13, :hearts, 12, :hearts, 11, :hearts, 10, :hearts] }
+  let(:straight_flush) { [8, :spades, 7, :spades, 6, :spades, 5, :spades, 4, :spades] }
+  let(:four_of_a_kind) { [8, :spades, 8, :hearts, 8, :diamonds, 8, :clubs, 4, :spades] }
+  let(:full_house) { [8, :spades, 8, :hearts, 8, :diamonds, 7, :clubs, 7, :spades] }
+  let(:flush) { [8, :spades, 7, :spades, 6, :spades, 2, :spades, 4, :spades] }
+  let(:straight) { [8, :spades, 7, :clubs, 6, :spades, 5, :spades, 4, :spades] }
+  let(:three_of_a_kind) { [8, :spades, 8, :hearts, 8, :diamonds, 5, :spades, 4, :spades] }
+  let(:two_pair) { [8, :spades, 8, :hearts, 7, :diamonds, 7, :spades, 4, :spades] }
+  let(:one_pair) { [8, :spades, 8, :hearts, 5, :diamonds, 7, :spades, 4, :spades] }
+  let(:crap1) { [8, :spades, 7, :hearts, 5, :diamonds, 4, :spades, 2, :spades] }
+  let(:crap2) { [8, :hearts, 7, :diamonds, 6, :diamonds, 2, :spades, 3, :spades] }
+  let(:crap3) { [7, :spades, 6, :hearts, 5, :diamonds, 4, :hearts, 2, :spades] }
 
 
   describe '#add_cards' do
@@ -112,15 +124,6 @@ RSpec.describe Hand do
   end
 
   describe '#name' do
-    let(:royal_flush) { [14, :hearts, 13, :hearts, 12, :hearts, 11, :hearts, 10, :hearts] }
-    let(:straight_flush) { [8, :spades, 7, :spades, 6, :spades, 5, :spades, 4, :spades] }
-    let(:four_of_a_kind) { [8, :spades, 8, :hearts, 8, :diamonds, 8, :clubs, 4, :spades] }
-    let(:full_house) { [8, :spades, 8, :hearts, 8, :diamonds, 7, :clubs, 7, :spades] }
-    let(:flush) { [8, :spades, 7, :spades, 6, :spades, 2, :spades, 4, :spades] }
-    let(:straight) { [8, :spades, 7, :clubs, 6, :spades, 5, :spades, 4, :spades] }
-    let(:three_of_a_kind) { [8, :spades, 8, :hearts, 8, :diamonds, 5, :spades, 4, :spades] }
-    let(:two_pair) { [8, :spades, 8, :hearts, 7, :diamonds, 7, :spades, 4, :spades] }
-    let(:one_pair) { [8, :spades, 8, :hearts, 5, :diamonds, 7, :spades, 4, :spades] }
 
     context 'when passed a hand' do
       it 'recognizes royal flush' do
@@ -168,6 +171,19 @@ RSpec.describe Hand do
         expect(hand.hand_name).to eq("One Pair")
       end
 
+    end
+
+    describe '#tie_break' do
+      context 'when comparing hands' do
+        it "can correctly break ties between two High Card hands" do
+          c_hand1 = create_hand(crap1)
+          c_hand2 = create_hand(crap2)
+          c_hand3 = create_hand(crap3)
+
+          expect(c_hand1.tie_break(c_hand2)).to eq(1)
+          expect(c_hand3.tie_break(c_hand2)).to eq(-1)
+        end
+      end
     end
   end
 end
